@@ -10,6 +10,6 @@ class Method(enum.Enum):
 
 
 class HttpClient:
-    def send_request(self, url: str, method: Method, data: dict) -> object: 
+    def send_request(self, url: str, method: Method, data: dict, headers: dict = None) -> object: 
         raise NotImplementedError()
 

@@ -1,20 +1,18 @@
 global baseurl is "http://localhost"
 
 login is request
-    POST /login
-    Content-Type: application/json
-
-    {
-        "username": "stefan"
-        "pafdsf": "{{base64encode "kurcina"}}"
+    POST "/login"
+    with header {
+        Content-Type: "application/json"
+    }
+    with body {
+        username: "stefan"
+        pafdsf: (base64encode "kurcina")
     }
 end
 
 users is request
-    AUTH Bearer {{ responseBody login, "$.access_token" }}
-    GET /users
-
-    {{ loadFile "hfadkjshf" }}
+    GET "/users"
+    with auth  bearer 
 end
 
-listOfUsers = ${responseBody users "$.users"}

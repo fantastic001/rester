@@ -2,3 +2,5 @@ baseurl is "http://localhost";
 
 login is post "/login" with header "haha";
 
+truth is exists login; 
+

@@ -80,6 +80,10 @@ class Context:
         all_items.update(self.identifiers)
         return all_items.items()
 
+class HasIdentifier:
+    def evaluate(self, context, args, params):
+        identifier = args[0].name
+        return identifier in context.identifiers
 
 class BuiltinFunctionProvider(IdentifierProvider):
     def provide(self, name):
@@ -92,7 +96,9 @@ class BuiltinFunctionProvider(IdentifierProvider):
                 "args": args,
                 "params": kwargs
             }
-        return None
+        return {
+            "exists": HasIdentifier()
+        }.get(name, None)
 
 class Definition:
     def __init__(self, name, type_def):
@@ -127,9 +133,12 @@ class FunctionCall:
         return f"FunctionCall(name={self.name}, args={self.args}, params={self.params})"
     def evaluate(self, context: dict):
         func = context[self.name]
-        evaluated_args = [arg.evaluate(context) if hasattr(arg, 'evaluate') else arg for arg in self.args]
-        evaluated_params = {k: (v.evaluate(context) if hasattr(v, 'evaluate') else v) for k, v in self.params.items()}
-        return func(*evaluated_args, **evaluated_params)
+        if hasattr(func, 'evaluate'):
+            return func.evaluate(context, self.args, self.params)
+        else:
+            evaluated_args = [arg.evaluate(context) if hasattr(arg, 'evaluate') else arg for arg in self.args]
+            evaluated_params = {k: (v.evaluate(context) if hasattr(v, 'evaluate') else v) for k, v in self.params.items()}
+            return func(*evaluated_args, **evaluated_params)
 
 class ObjectExpression:
     def __init__(self, pairs):

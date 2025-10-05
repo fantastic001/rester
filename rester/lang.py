@@ -1,11 +1,12 @@
 
+from abc import abstractmethod
 from tatsu import compile 
 
 GRAMMAR = """
 
     start = statements ;
     statements = head:statement tail:statements | head:statement ;
-    statement = global_statement | definition ;
+    statement = definition ;
 
     string = /"[^"]*"/ ;
     identifier = /[a-zA-Z_][a-zA-Z0-9_\\-]*/ ;
@@ -24,43 +25,75 @@ GRAMMAR = """
         | value:null 
         | value:object 
         | value:array 
-        | "(" value:expression ")"
+        | value:func_call
         | value:identifier
         ;
 
-    global_statement = "global" identifier "is" value  ;
-    definition = identifier is type "end";
+    definition = identifier is value ";";
 
     
-    method_type = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" ;
     param = 
         "with" name:identifier value:value ;
     params = head:param tail:params | head:param ;
-    request_type = 
-          "request" method_type string params
-        | "request" method_type string
-        ;
-                    
 
-    type = request_type ;
 
-    func_call = identifier args ;
+    func_call = 
+        name:identifier value:value params:params 
+        | name:identifier args:args ;
     args = head:value tail:args | head:value;
-    expression = func_call | value | identifier ;
-    assignment = identifier "=" expression ;
 
     is = "is" ;
 
 
 """
 
-class GlobalStatement:
-    def __init__(self, name, value):
-        self.name = name
-        self.value = value
-    def __repr__(self):
-        return f"GlobalStatement(name={self.name}, value={self.value})"
+
+class IdentifierProvider:
+    @abstractmethod
+    def provide(self, name):
+        raise NotImplementedError()
+
+class Context:
+    def __init__(self, providers):
+        self.providers = providers
+        self.identifiers = {} 
     
+    def get(self, name):
+        if name in self.identifiers:
+            return self.identifiers[name]
+        for provider in self.providers:
+            value = provider.provide(name)
+            if value is not None:
+                return value
+    
+    def __getitem__(self, name):
+        return self.get(name)
+    
+    def __setitem__(self, name, value):
+        self.identifiers[name] = value
+    
+    def items(self):
+        all_items = {}
+        for provider in self.providers:
+            if hasattr(provider, 'items'):
+                all_items.update(provider.items())
+        all_items.update(self.identifiers)
+        return all_items.items()
+
+
+class BuiltinFunctionProvider(IdentifierProvider):
+    def provide(self, name):
+        import base64
+        if name == "base64encode":
+            return lambda s: base64.b64encode(s.encode()).decode()
+        if name in ["get", "post", "put", "delete"]:
+            return lambda *args, **kwargs: {
+                "method": name.upper(),
+                "args": args,
+                "params": kwargs
+            }
+        return None
+
 class Definition:
     def __init__(self, name, type_def):
         self.name = name
@@ -86,15 +119,17 @@ class Identifier:
         return context[self.name]
 
 class FunctionCall:
-    def __init__(self, name, args):
+    def __init__(self, name, args, params=None):
         self.name = name
         self.args = args
+        self.params = params or {}
     def __repr__(self):
-        return f"FunctionCall(name={self.name}, args={self.args})"
+        return f"FunctionCall(name={self.name}, args={self.args}, params={self.params})"
     def evaluate(self, context: dict):
         func = context[self.name]
         evaluated_args = [arg.evaluate(context) if hasattr(arg, 'evaluate') else arg for arg in self.args]
-        return func(*evaluated_args)
+        evaluated_params = {k: (v.evaluate(context) if hasattr(v, 'evaluate') else v) for k, v in self.params.items()}
+        return func(*evaluated_args, **evaluated_params)
 
 class ObjectExpression:
     def __init__(self, pairs):
@@ -153,16 +188,11 @@ class ResterLangSemantics:
     def value(self, v):
         return v.value 
 
-    def global_statement(self, parts):
-        _, name, _, value = parts
-        return GlobalStatement(name, value)
 
     def definition(self, parts):
-        name, _, type_def, _ = parts
+        identifier, _, type_def, _ = parts
+        name = identifier.name
         return Definition(name, type_def)
-
-    def method_type(self, method):
-        return method
 
     def param(self, parts):
         if parts.value is None:
@@ -176,45 +206,13 @@ class ResterLangSemantics:
         else:
             return [parts.head] + parts.tail
 
-    def request_type(self, parts):
-        _, method, url, *params = parts
-        params_dict = {}
-        for p in params:
-            if isinstance(p, list):
-                for subp in p:
-                    key = subp[0]
-                    if key in params_dict:
-                        if isinstance(params_dict[key], list):
-                            params_dict[key].append(subp[1])
-                        else:
-                            params_dict[key] = [params_dict[key], subp[1]]
-                    else:
-                        params_dict[key] = subp[1]
-            else:
-                key = p[0]
-                if key in params_dict:
-                    if isinstance(params_dict[key], list):
-                        params_dict[key].append(p[1])
-                    else:
-                        params_dict[key] = [params_dict[key], p[1]]
-                else:
-                    params_dict[key] = p[1]
-        return ('request', method, url, params_dict)
-
-    def type(self, t):
-        return t
     def func_call(self, parts):
-        func_name = parts[0]
-        args = parts[1]
-        return FunctionCall(func_name.name, args)
-    
-    def expression(self, expr):
-        return expr
-    
-    def assignment(self, parts):
-        var_name, _, expr = parts
-        return ('assignment', var_name, expr)
-    
+        if parts.params is not None:
+            params = dict(parts.params)
+            return FunctionCall(parts.name.name, [parts.value], params)
+        else:
+            return FunctionCall(parts.name.name, parts.args, {})
+
     def args(self, parts):
         if parts.tail is None:
             return [parts.head]
@@ -243,12 +241,9 @@ if __name__ == "__main__":
     with open(f) as fp:
         text = fp.read()
     result = parser.parse(text)
-    context = {} 
+    context = Context(providers=[BuiltinFunctionProvider()])
     for r in result:
-        if isinstance(r, GlobalStatement):
-            print(f"Global: {r.name} = {r.value}")
-            context[r.name] = r.value.evaluate(context) if hasattr(r.value, 'evaluate') else r.value
-        elif isinstance(r, Definition):
+        if isinstance(r, Definition):
             print(f"Definition: {r.name} = {r.type_def}")
             context[r.name] = r.type_def
         else:

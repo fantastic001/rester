@@ -1,18 +1,4 @@
-global baseurl is "http://localhost"
+baseurl is "http://localhost";
 
-login is request
-    POST "/login"
-    with header {
-        Content-Type: "application/json"
-    }
-    with body {
-        username: "stefan"
-        pafdsf: (base64encode "kurcina")
-    }
-end
-
-users is request
-    GET "/users"
-    with auth  bearer 
-end
+login is post "/login" with header "haha";
 

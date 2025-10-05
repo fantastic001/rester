@@ -38,7 +38,8 @@ GRAMMAR = """
 
 
     func_call = 
-        name:identifier value:value params:params 
+        name:identifier params:params
+        | name:identifier value:value params:params 
         | name:identifier args:args ;
     args = head:value tail:args | head:value;
 
@@ -218,7 +219,10 @@ class ResterLangSemantics:
     def func_call(self, parts):
         if parts.params is not None:
             params = dict(parts.params)
-            return FunctionCall(parts.name.name, [parts.value], params)
+            if parts.value is not None:
+                return FunctionCall(parts.name.name, [parts.value], params)
+            else:
+                return FunctionCall(parts.name.name, [], params)
         else:
             return FunctionCall(parts.name.name, parts.args, {})
 

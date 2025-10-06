@@ -82,6 +82,20 @@ class Context:
         all_items.update(self.identifiers)
         return all_items.items()
 
+    def __contains__(self, name):
+        if name in self.identifiers:
+            return True
+        for provider in self.providers:
+            value = provider.provide(name)
+            if value is not None:
+                return True
+        return False
+    
+    def copy(self):
+        new_context = Context(self.providers)
+        new_context.identifiers = self.identifiers.copy()
+        return new_context
+
 class HasIdentifier:
     def evaluate(self, context, args, params):
         identifier = args[0].name
@@ -282,7 +296,7 @@ GRAMMAR_OPS = """
     start = statements ;
     statements = head:statement ";" tail:statements | head:statement ;
     string = /"[^"]*"/ ;
-    identifier = /[a-zA-Z0-9_]+/ | /[|:=+*\\/<>!\\-]+/ ;
+    identifier = /[a-zA-Z0-9_]+/ | /[|:=+*\\/<>!@$%^&\\-]+/ ;
     number = /[0-9]+/ | /[0-9]*\\.[0-9]+/ ;
     boolean = "true" | "false" ;
     null = "null" ;
@@ -479,10 +493,35 @@ EXAMPLE = """
 A = { x: 1; y: 2 };
 a = [1, 2, 3];
 b = a + [4, 5];
+e = $ {a=2; a = 2+a};
 b = 2 * (1+2);
 c = sum(3 + 4, 5);
 
+
 """
+
+class ExprEval:
+
+    def expr_eval_func(context, e):
+        if not isinstance(e, Expression):
+            raise ValueError("expr_eval_func expects an Expression")
+        local_context = context.copy()
+    
+    def evaluate(self, context, left, right):
+        if left:
+            raise ValueError("Left side of $ operator must be empty")
+        if right and len(right) == 1:
+            e = right[0]
+            if not isinstance(e, Expression):
+                raise ValueError("Right side of $ operator must be an Expression")
+            local_context = context.copy()
+            print("Evaluating expression in $:", e)
+            result = evaluate(local_context, e.parts)
+            print("Result of $ expression:", result)
+            return result[-1]
+        else:
+            raise ValueError("Right side of $ operator must be a single Expression")
+
 if __name__ == "__main__":
     import sys 
     f = sys.argv[1] if len(sys.argv) > 1 else None
@@ -510,6 +549,7 @@ if __name__ == "__main__":
             return right_value
 
     context["="] = (Assignment(), 0)
+    context["$"] = (ExprEval(), 100)
     print("Parsed result:")
     for r in result:
         print(f"  {r}")

@@ -304,7 +304,7 @@ GRAMMAR_OPS = """
     start = statements ;
     statements = head:statement ";" tail:statements | head:statement ;
     string = /"[^"]*"/ ;
-    identifier = /[a-zA-Z0-9_]+/ | /[|:=+*\\/<>!@$%^&\\-]+/ ;
+    identifier = /[a-zA-Z0-9_]+/ | /[|:=+*\\/<>!@$%^&\\-.]+/ ;
     number = /[0-9]+/ | /[0-9]*\\.[0-9]+/ ;
     boolean = "true" | "false" ;
     null = "null" ;
@@ -510,11 +510,21 @@ EXAMPLE = """
 f = (x,y) -> x+y;
 inc = f(1);
 x = 1; 
-x = inc(x);
+x = inc (x);
 f = (x) -> x * 2;
 x = f(x+2);
 f = (x) -> x * x;
 x = f(2+x);
+
+
+my_obj = @{
+    name = "random value";
+    x = 5;
+}; 
+
+x = @{
+    name = "haha";
+}.name;
 """
 
 class Operator:
@@ -552,6 +562,10 @@ class ExprEval:
 
 class ContextExtraction():
     def evaluate(self, context, left, right):
+        if len(left) == 0:
+            my_context = context.copy()
+            expr = evaluate(my_context, right[0].parts) 
+            return my_context.identifiers
         if len(left) != 1:
             raise ValueError("Left side of context extraction must be a single identifier name")
         if not right or len(right) != 1:
@@ -639,6 +653,16 @@ class FunDef(Operator):
                 return result
         return Execution(arguments, context.copy())
 
+
+class Access(Operator):
+    def evaluate(self, context, left, right):
+        assert len(right) == 1
+        left = evaluate(context, left)
+        identifier = right[0].name 
+        result = evaluate(context, left)
+        if result is not None:
+            return result[identifier]
+
 if __name__ == "__main__":
     import sys 
     f = sys.argv[1] if len(sys.argv) > 1 else None
@@ -655,6 +679,7 @@ if __name__ == "__main__":
     context["*"] = (lambda a, b: a * b if a else 0, 20)
     context["/"] = (lambda a, b: a / b if a else 1, 20)
     context["sum"] = (lambda *lst: sum(lst) if lst else 0, 30)
+    context["."] = (Access(), 999)
     class Assignment:
         def evaluate(self, context, left, right):
             if len(left) != 1:
@@ -671,8 +696,8 @@ if __name__ == "__main__":
             return right_value
 
     context["="] = (Assignment(), 0)
-    context["$"] = (ExprEval(), 100)
-    context["@"] = (ContextExtraction(), 100)
+    context["$"] = (ExprEval(), 1000)
+    context["@"] = (ContextExtraction(), 1000)
     context["identifiers"] = (Identifiers(), 100)
     context["id"] = (Id(), 100)
     context["random"] = (lambda: random.random(), 100)

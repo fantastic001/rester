@@ -311,6 +311,7 @@ GRAMMAR_OPS = """
         | value:array
         | value:identifier
         | "(" expr:expression_list ")"
+        | x:"(" ")"
         | "{" symbolic_expr:statements "}"
         ;
     expression_list = head:expression "," tail:expression_list | head:expression ;
@@ -392,7 +393,12 @@ class CustomOpSemantics:
     def value(self, v):
         if v.symbolic_expr is not None:
             return Expression(v.symbolic_expr)
-        return v.value if v.value else v.expr
+        if v.expr is not None:
+            return v.expr
+        if v.value is not None:
+            return v.value
+        else:
+            return ExpressionList([])
     
     def items(self, items):
         if items.tail is None:
@@ -500,8 +506,9 @@ c = sum(3 + 4, 5);
 my_value = $ {{x} @ {x = 2}}; 
 
 f = {x=1; x};
-g = $ f
-
+g = $ f;
+ids = identifiers();
+other_ids = identifiers(f)
 """
 
 class ExprEval:
@@ -538,6 +545,22 @@ class ContextExtraction():
             result = evaluate(my_context, expr.parts)
             return evaluate(my_context, identifier.parts)
 
+class Identifiers():
+    def evaluate(self, context, left, right):
+        left = evaluate(context, left)
+        right = evaluate(context, right)
+        if right is None:
+            raise ValueError("Right side of identifiers() must be an Expression or empty")
+        if left:
+            raise ValueError("Left side of identifiers() must be empty")
+        if len(right) == 0:
+            return ListExpression(context.identifiers.keys())
+        elif len(right) == 1:
+            if not isinstance(right[0], Expression):
+                raise ValueError("Right side of identifiers() must be an Expression or empty")
+            my_context = context.copy()
+            expr = evaluate(my_context, right[0].parts)
+            return ListExpression([k for k, v in my_context.items() if not k in context.identifiers])
 
 if __name__ == "__main__":
     import sys 
@@ -569,6 +592,7 @@ if __name__ == "__main__":
     context["="] = (Assignment(), 0)
     context["$"] = (ExprEval(), 100)
     context["@"] = (ContextExtraction(), 100)
+    context["identifiers"] = (Identifiers(), 100)
     print("Parsed result:")
     for r in result:
         print(f"  {r}")

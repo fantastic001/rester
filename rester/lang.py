@@ -318,7 +318,7 @@ GRAMMAR_OPS = """
         ;
     expression_list = head:expression "," tail:expression_list | head:expression ;
     expression = first:value rest:expression | first:value ;
-    statement = expr:expression ;
+    statement = expr:expression | empty:{} ;
 """
 
 class ListExpression:
@@ -425,12 +425,12 @@ class CustomOpSemantics:
 
     def statements(self, stmts):
         if stmts.tail is None:
-            return [stmts.head]
+            return [stmts.head] if stmts.head is not None else []
         else:
-            return [stmts.head] + stmts.tail
+            return [stmts.head] + stmts.tail if stmts.head is not None else stmts.tail
     
     def statement(self, stmt):
-        return stmt.expr
+        return stmt.expr if stmt.expr is not None else None
     
     def start(self, stmts):
         return stmts
@@ -508,10 +508,11 @@ c = sum(3 + 4, 5);
 my_value = $ {{x} @ {x = 2}}; 
 
 f = {x=1; x};
-g = $ f;
+g = $ f;;;;
 ids = identifiers();
 other_ids = identifiers(f);
 r = random(); 
+;;
 """
 
 class ExprEval:

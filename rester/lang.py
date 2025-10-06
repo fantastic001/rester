@@ -1,5 +1,6 @@
 
 from abc import abstractmethod
+from ast import FunctionDef
 from math import e
 import math
 import random
@@ -98,6 +99,10 @@ class Context:
         new_context = Context(self.providers)
         new_context.identifiers = self.identifiers.copy()
         return new_context
+    
+    def __delitem__(self, name):
+        if name in self.identifiers:
+            del self.identifiers[name]
 
 class HasIdentifier:
     def evaluate(self, context, args, params):
@@ -346,7 +351,11 @@ class ExpressionList:
     def __repr__(self):
         return f"ExpressionList({self.items})"
     def evaluate(self, context: dict):
-        return [evaluate(context, item) for item in self.items]
+        result = [evaluate(context, item) for item in self.items]
+        if len(result) == 1:
+            return result[0]
+        else:
+            return result 
     
     def __len__(self):
         return len(self.items)
@@ -455,6 +464,8 @@ def evaluate(context, expr):
                         continue
                     if isinstance(op, tuple):
                         op, precedence = op
+                    elif isinstance(op, Operator):
+                        precedence = 100
                     else:
                         continue
                     if precedence < min_precedence:
@@ -470,12 +481,10 @@ def evaluate(context, expr):
             if not min_op:
                 raise ValueError(f"Operator {expr[op_index].name} not found in context")
             if hasattr(min_op, "evaluate"):
-                print(f"Symbolic Evaluating operator {expr[op_index].name} with left={repr(left)} and right={repr(right)}")
                 return min_op.evaluate(context, left, right)
             else:
                 left_evaluated = evaluate(context, left)
                 right_evaluated = evaluate(context, right)
-                print("Evaluating operator", expr[op_index].name, "with left =", repr(left_evaluated), "and right =", repr(right_evaluated))
                 if left_evaluated is not None and right_evaluated is not None:
                     if isinstance(left_evaluated, list) and not isinstance(right_evaluated, list):
                         return [min_op(item, right_evaluated) for item in left_evaluated]
@@ -498,25 +507,18 @@ def evaluate(context, expr):
             return expr
         
 EXAMPLE = """
-A = { x: 1; y: 2 };
-a = [1, 2, 3];
-b = a + [4, 5];
-e = $ {a=2; a = 2+a};
-b = 2 * (1+2);
-c = sum(3 + 4, 5);
-
-my_value = $ {{x} @ {x = 2}}; 
-
-f = {x=1; x};
-g = $ f;;;;
-ids = identifiers();
-other_ids = identifiers(f);
-r = random(); 
-;;
-
-id("haha") = 5 + "c" @ {()}; 
-
+f = (x,y) -> x+y;
+inc = f(1);
+x = 1; 
+x = inc(x);
+f = (x) -> x * 2;
+x = f(x+2);
+f = (x) -> x * x;
+x = f(2+x);
 """
+
+class Operator:
+    pass 
 
 class Id:
     def evaluate(self, context, left, right):
@@ -583,6 +585,60 @@ class Identifiers():
             expr = evaluate(my_context, right[0].parts)
             return ListExpression([k for k, v in my_context.items() if not k in context.identifiers])
 
+
+class FunDef(Operator):
+    def evaluate(self, context, left, right):
+        print("Left: %s" % left)
+        if isinstance(left[0], ExpressionList):
+            arguments = [x[0].name  for x in  left[0].items]
+        else:
+            arguments = [x.name for x in left[0]]
+        if len(right) == 1 and isinstance(right[0], Expression):
+            body = right[0].parts
+        else:
+            body = right 
+        class Execution(Operator):
+            def __init__(self, args, bindings=None):
+                self.bindings = bindings or {}
+                self.arguments = args
+                for arg in args:
+                    if arg in self.bindings:
+                        del self.bindings[arg]
+            def evaluate(self, ctx, left=None, right=None):
+                ctx = self.bindings
+                if left is None and right is None:
+                    return Execution(self.arguments, ctx.copy())
+                assert len(left) == 0 
+                if isinstance(right[0], ExpressionList):
+                    vals = right[0].items
+                else:
+                    vals = right[0]
+                 
+                
+
+            
+                evals = [evaluate(context, val) for val in vals]
+                
+                if len(evals) > len(self.arguments):
+                    raise ValueError("Too many arguments provided to function")
+                for arg, val in zip(self.arguments, evals):
+                    if arg not in ctx:
+                        ctx[arg] = val
+                unassigned = [arg for arg in self.arguments if arg not in ctx]
+                if not unassigned:
+                    return evaluate(ctx, body)
+                else:
+                    return Execution(unassigned, ctx.copy())
+            def __repr__(self):
+                result =  "(%s) -> %s" % (
+                    ", ".join(self.arguments),
+                    str(body)
+                )
+                if self.bindings:
+                    result += " with bindings: " + ", ".join([b for b in self.bindings.identifiers.keys()])
+                return result
+        return Execution(arguments, context.copy())
+
 if __name__ == "__main__":
     import sys 
     f = sys.argv[1] if len(sys.argv) > 1 else None
@@ -620,10 +676,8 @@ if __name__ == "__main__":
     context["identifiers"] = (Identifiers(), 100)
     context["id"] = (Id(), 100)
     context["random"] = (lambda: random.random(), 100)
+    context["->"] = (FunDef(), 5)
     print("Parsed result:")
-    for r in result:
-        print(f"  {r}")
-    print("Evaluating...")
     for r in result:
         if hasattr(r, 'evaluate'):
             value = evaluate(context, r)

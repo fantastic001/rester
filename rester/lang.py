@@ -481,10 +481,12 @@ def evaluate(context, expr):
             if not min_op:
                 raise ValueError(f"Operator {expr[op_index].name} not found in context")
             if hasattr(min_op, "evaluate"):
+                print("Evaluating operator %s with left=%s and right=%s" % (expr[op_index].name, left, right))
                 return min_op.evaluate(context, left, right)
             else:
                 left_evaluated = evaluate(context, left)
                 right_evaluated = evaluate(context, right)
+                print("Evaluating operator %s with left=%s and right=%s" % (expr[op_index].name, left_evaluated, right_evaluated))
                 if left_evaluated is not None and right_evaluated is not None:
                     if isinstance(left_evaluated, list) and not isinstance(right_evaluated, list):
                         return [min_op(item, right_evaluated) for item in left_evaluated]
@@ -509,9 +511,10 @@ def evaluate(context, expr):
 EXAMPLE = """
 
 x = 5; 
-f = (x,y) -> {{ x + y}} ;
-y = f(1,2);
+f = (x,y) -> x + y;
 
+y = f(10, 20);
+z = f(30, 40);
 """
 
 class Operator:
@@ -606,7 +609,7 @@ class FunDef(Operator):
                     if arg in self.bindings:
                         del self.bindings[arg]
             def evaluate(self, ctx, left=None, right=None):
-                ctx = self.bindings
+                ctx = self.bindings.copy()
                 if left is None and right is None:
                     return Execution(self.arguments, ctx.copy())
                 assert len(left) == 0 
@@ -614,9 +617,6 @@ class FunDef(Operator):
                     vals = right[0].items
                 else:
                     vals = right[0]
-                 
-                
-
             
                 evals = [evaluate(context, val) for val in vals]
                 
@@ -681,10 +681,10 @@ if __name__ == "__main__":
     context["->"] = (FunDef(), 5)
     print("Parsed result:")
     result = ""
-    
     while True:
-        result = input("> ") + ";"
-        result = parser_ops.parse(result, semantics=CustomOpSemantics())
+        # result = input("> ") + ";"
+        result = EXAMPLE
+        result = parser_ops.parse(result)
         value = None
         for r in result:
             if hasattr(r, 'evaluate'):
@@ -693,4 +693,8 @@ if __name__ == "__main__":
                 value = evaluate(context, r)
             else:
                 print(f"Unknown: {r}")
+        for k,v in context.items():
+            print(f"  {k}: {v}")
         print(value)
+        break 
+        

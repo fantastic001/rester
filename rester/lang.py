@@ -507,24 +507,8 @@ def evaluate(context, expr):
             return expr
         
 EXAMPLE = """
-f = (x,y) -> x+y;
-inc = f(1);
-x = 1; 
-x = inc (x);
-f = (x) -> x * 2;
-x = f(x+2);
-f = (x) -> x * x;
-x = f(2+x);
 
 
-my_obj = @{
-    name = "random value";
-    x = 5;
-}; 
-
-x = @{
-    name = "haha";
-}.name;
 """
 
 class Operator:
@@ -648,8 +632,6 @@ class FunDef(Operator):
                     ", ".join(self.arguments),
                     str(body)
                 )
-                if self.bindings:
-                    result += " with bindings: " + ", ".join([b for b in self.bindings.identifiers.keys()])
                 return result
         return Execution(arguments, context.copy())
 

@@ -354,8 +354,7 @@ class ExpressionList:
         result = [evaluate(context, item) for item in self.items]
         if len(result) == 1:
             return result[0]
-        else:
-            return result 
+        return result
     
     def __len__(self):
         return len(self.items)
@@ -682,8 +681,8 @@ if __name__ == "__main__":
     print("Parsed result:")
     result = ""
     while True:
-        # result = input("> ") + ";"
-        result = EXAMPLE
+        result = input("> ") + ";"
+        # result = EXAMPLE
         result = parser_ops.parse(result)
         value = None
         for r in result:
@@ -693,8 +692,8 @@ if __name__ == "__main__":
                 value = evaluate(context, r)
             else:
                 print(f"Unknown: {r}")
-        for k,v in context.items():
-            print(f"  {k}: {v}")
+        # for k,v in context.items():
+        #     print(f"  {k}: {v}")
         print(value)
-        break 
+        # break 
         

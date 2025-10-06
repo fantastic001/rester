@@ -513,10 +513,27 @@ ids = identifiers();
 other_ids = identifiers(f);
 r = random(); 
 ;;
+
+id("haha") = 5 + "c" @ {()}; 
+
 """
 
-class ExprEval:
+class Id:
+    def evaluate(self, context, left, right):
+        if len(left) > 0:
+            raise ValueError("Left side of operator id has to be empty")
+        args = evaluate(context, right)
+        if args is None:
+            raise ValueError("arguments of id evaluate to nothing")
+        if len(args) != 1:
+            raise ValueError("Number of arguments of id operator must be 1")
+        if not isinstance(args[0], str):
+            raise ValueError("Argument of id operator must be string")
+        identifier = args[0]
+        return Identifier(identifier)
+        
 
+class ExprEval:
     
     def evaluate(self, context, left, right):
         if left:
@@ -585,18 +602,23 @@ if __name__ == "__main__":
     class Assignment:
         def evaluate(self, context, left, right):
             if len(left) != 1:
-                raise ValueError("Left side of assignment must be a single identifier")
-            if not isinstance(left[0], Identifier):
+                left = evaluate(context, left)
+                if not isinstance(left, Identifier):
+                    raise ValueError("Left side of assignment must be a single identifier")
+            else:
+                left = left[0]
+            if not isinstance(left, Identifier):
                 raise ValueError("Left side of assignment must be an identifier")
             right_value = evaluate(context, right)
-            context[left[0].name] = right_value
-            print(f"Assigned {left[0].name} = {repr(right_value)}")
+            context[left.name] = right_value
+            print(f"Assigned {left.name} = {repr(right_value)}")
             return right_value
 
     context["="] = (Assignment(), 0)
     context["$"] = (ExprEval(), 100)
     context["@"] = (ContextExtraction(), 100)
     context["identifiers"] = (Identifiers(), 100)
+    context["id"] = (Id(), 100)
     context["random"] = (lambda: random.random(), 100)
     print("Parsed result:")
     for r in result:

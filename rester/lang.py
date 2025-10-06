@@ -1,5 +1,6 @@
 
 from abc import abstractmethod
+from math import e
 from tatsu import compile 
 
 GRAMMAR = """
@@ -323,7 +324,6 @@ class ListExpression:
     def __repr__(self):
         return f"ListExpression({self.items})"
     def evaluate(self, context: dict):
-        print("Evaluating ListExpression with items:", self.items)
         return ListExpression([evaluate(context, item) for item in self.items])
     
     def __len__(self):
@@ -361,10 +361,12 @@ class ExpressionList:
 
 class Expression:
     def __init__(self, parts):
-        self.parts = parts
+        if isinstance(parts, list):
+            self.parts = parts
+        else:
+            raise ValueError("Expression parts must be a list but got " + str(type(parts)))
     def __repr__(self):
         return ",".join(" ".join(str(t) for t in part) for part in self.parts)
-    
     
 
 class CustomOpSemantics:
@@ -440,21 +442,17 @@ def evaluate(context, expr):
             min_op = None
             for i in range(len(expr)):
                 if isinstance(expr[i], Identifier):
-                    print(f"Found operator: {expr[i].name}")
                     op = context.get(expr[i].name)
                     if op is None:
-                        print(f"Warning: Operator {expr[i].name} not found in context, skipping")
                         continue
                     if isinstance(op, tuple):
                         op, precedence = op
                     else:
-                        print(f"Warning: Operator {expr[i].name} has no precedence defined, skipping")
                         continue
                     if precedence < min_precedence:
                         min_precedence = precedence
                         op_index = i
                         min_op = op
-            print("Operator selected:", expr[op_index] if op_index != -1 else None)
             if op_index == -1 and len(expr) == 1:
                 return evaluate(context, expr[0])
             if op_index == -1:
@@ -464,10 +462,12 @@ def evaluate(context, expr):
             if not min_op:
                 raise ValueError(f"Operator {expr[op_index].name} not found in context")
             if hasattr(min_op, "evaluate"):
+                print(f"Symbolic Evaluating operator {expr[op_index].name} with left={repr(left)} and right={repr(right)}")
                 return min_op.evaluate(context, left, right)
             else:
                 left_evaluated = evaluate(context, left)
                 right_evaluated = evaluate(context, right)
+                print("Evaluating operator", expr[op_index].name, "with left =", repr(left_evaluated), "and right =", repr(right_evaluated))
                 if left_evaluated is not None and right_evaluated is not None:
                     if isinstance(left_evaluated, list) and not isinstance(right_evaluated, list):
                         return [min_op(item, right_evaluated) for item in left_evaluated]
@@ -497,30 +497,47 @@ e = $ {a=2; a = 2+a};
 b = 2 * (1+2);
 c = sum(3 + 4, 5);
 
+my_value = $ {{x} @ {x = 2}}; 
+
+f = {x=1; x};
+g = $ f
 
 """
 
 class ExprEval:
 
-    def expr_eval_func(context, e):
-        if not isinstance(e, Expression):
-            raise ValueError("expr_eval_func expects an Expression")
-        local_context = context.copy()
     
     def evaluate(self, context, left, right):
         if left:
             raise ValueError("Left side of $ operator must be empty")
         if right and len(right) == 1:
-            e = right[0]
-            if not isinstance(e, Expression):
-                raise ValueError("Right side of $ operator must be an Expression")
+            e = evaluate(context, right[0])
             local_context = context.copy()
-            print("Evaluating expression in $:", e)
             result = evaluate(local_context, e.parts)
-            print("Result of $ expression:", result)
-            return result[-1]
+            if isinstance(result, list):
+                return result[-1] if result else None
+            return result
         else:
             raise ValueError("Right side of $ operator must be a single Expression")
+
+class ContextExtraction():
+    def evaluate(self, context, left, right):
+        if len(left) != 1:
+            raise ValueError("Left side of context extraction must be a single identifier name")
+        if not right or len(right) != 1:
+            raise ValueError("Right side of context extraction must be a single expression")
+        if not isinstance(right[0], Expression):
+            raise ValueError("Right side of context extraction must be an Expression")
+        my_context = context.copy()
+        identifier = evaluate(my_context, left[0])
+        expr = evaluate(my_context, right[0])
+        if isinstance(identifier, str):
+            result = evaluate(my_context, expr.parts)
+            return my_context[identifier]
+        elif isinstance(identifier, Expression):
+            result = evaluate(my_context, expr.parts)
+            return evaluate(my_context, identifier.parts)
+
 
 if __name__ == "__main__":
     import sys 
@@ -546,22 +563,21 @@ if __name__ == "__main__":
                 raise ValueError("Left side of assignment must be an identifier")
             right_value = evaluate(context, right)
             context[left[0].name] = right_value
+            print(f"Assigned {left[0].name} = {repr(right_value)}")
             return right_value
 
     context["="] = (Assignment(), 0)
     context["$"] = (ExprEval(), 100)
+    context["@"] = (ContextExtraction(), 100)
     print("Parsed result:")
     for r in result:
         print(f"  {r}")
     print("Evaluating...")
     for r in result:
-        print(f"Evaluating: {r}")
         if hasattr(r, 'evaluate'):
             value = evaluate(context, r)
-            print(f"Expression result: {value}")
         elif isinstance(r, list) or isinstance(r, tuple):
             value = evaluate(context, r)
-            print(f"Expression result: {value}")
         else:
             print(f"Unknown: {r}")
     print("Context:")

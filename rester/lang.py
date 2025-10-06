@@ -1,6 +1,8 @@
 
 from abc import abstractmethod
 from math import e
+import math
+import random
 from tatsu import compile 
 
 GRAMMAR = """
@@ -508,7 +510,8 @@ my_value = $ {{x} @ {x = 2}};
 f = {x=1; x};
 g = $ f;
 ids = identifiers();
-other_ids = identifiers(f)
+other_ids = identifiers(f);
+r = random(); 
 """
 
 class ExprEval:
@@ -593,6 +596,7 @@ if __name__ == "__main__":
     context["$"] = (ExprEval(), 100)
     context["@"] = (ContextExtraction(), 100)
     context["identifiers"] = (Identifiers(), 100)
+    context["random"] = (lambda: random.random(), 100)
     print("Parsed result:")
     for r in result:
         print(f"  {r}")

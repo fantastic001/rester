@@ -508,6 +508,9 @@ def evaluate(context, expr):
         
 EXAMPLE = """
 
+x = 5; 
+f = (x,y) -> {{ x + y}} ;
+y = f(1,2);
 
 """
 

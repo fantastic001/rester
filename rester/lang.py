@@ -280,7 +280,7 @@ parser = compile(GRAMMAR, semantics=ResterLangSemantics())
 GRAMMAR_OPS = """
 
     start = statements ;
-    statements = head:statement tail:statements | head:statement ;
+    statements = head:statement ";" tail:statements | head:statement ;
     string = /"[^"]*"/ ;
     identifier = /[a-zA-Z0-9_]+/ | /[|:=+*\\/<>!\\-]+/ ;
     number = /[0-9]+/ | /[0-9]*\\.[0-9]+/ ;
@@ -296,11 +296,11 @@ GRAMMAR_OPS = """
         | value:array
         | value:identifier
         | "(" expr:expression_list ")"
-        | "{" symbolic_expr:expression_list "}"
+        | "{" symbolic_expr:statements "}"
         ;
     expression_list = head:expression "," tail:expression_list | head:expression ;
     expression = first:value rest:expression | first:value ;
-    statement = expr:expression ";" ;
+    statement = expr:expression ;
 """
 
 class ListExpression:
@@ -476,7 +476,7 @@ def evaluate(context, expr):
             return expr
         
 EXAMPLE = """
-A = { x: 1, y: 2 };
+A = { x: 1; y: 2 };
 a = [1, 2, 3];
 b = a + [4, 5];
 b = 2 * (1+2);

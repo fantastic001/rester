@@ -114,6 +114,8 @@ class Constant:
         self.value = value
     def __repr__(self):
         return f"Constant({self.value})"
+    def __str__(self) -> str:
+        return str(self.value)
     
     def evaluate(self, context: dict):
         return self.value
@@ -123,6 +125,8 @@ class Identifier:
         self.name = name
     def __repr__(self):
         return f"Identifier({self.name})"
+    def __str__(self) -> str:
+        return self.name
     def evaluate(self, context: dict):
         return context[self.name]
 
@@ -292,6 +296,7 @@ GRAMMAR_OPS = """
         | value:array
         | value:identifier
         | "(" expr:expression_list ")"
+        | "{" symbolic_expr:expression_list "}"
         ;
     expression_list = head:expression "," tail:expression_list | head:expression ;
     expression = first:value rest:expression | first:value ;
@@ -340,6 +345,13 @@ class ExpressionList:
         else:
             raise ValueError("Can only add ExpressionList or list to ExpressionList")
 
+class Expression:
+    def __init__(self, parts):
+        self.parts = parts
+    def __repr__(self):
+        return ",".join(" ".join(str(t) for t in part) for part in self.parts)
+    
+    
 
 class CustomOpSemantics:
     def string(self, s):
@@ -362,6 +374,8 @@ class CustomOpSemantics:
         return Constant(None)
 
     def value(self, v):
+        if v.symbolic_expr is not None:
+            return Expression(v.symbolic_expr)
         return v.value if v.value else v.expr
     
     def items(self, items):
@@ -374,6 +388,7 @@ class CustomOpSemantics:
         return ListExpression(items.list or [])
 
     def expression(self, parts):
+        
         left = parts.first
         right = parts.rest or [] 
         return [left] + right
@@ -461,9 +476,12 @@ def evaluate(context, expr):
             return expr
         
 EXAMPLE = """
+A = { x: 1, y: 2 };
 a = [1, 2, 3];
 b = a + [4, 5];
+b = 2 * (1+2);
 c = sum(3 + 4, 5);
+
 """
 if __name__ == "__main__":
     import sys 

@@ -249,24 +249,24 @@ class ResterLangSemantics:
 
 parser = compile(GRAMMAR, semantics=ResterLangSemantics())
 
-if __name__ == "__main__":
-    import sys 
-    f = sys.argv[1]
-    with open(f) as fp:
-        text = fp.read()
-    result = parser.parse(text)
-    context = Context(providers=[BuiltinFunctionProvider()])
-    for r in result:
-        if isinstance(r, Definition):
-            print(f"Definition: {r.name} = {r.type_def}")
-            context[r.name] = r.type_def
-        else:
-            print(f"Unknown: {r}")
-    print("Context:")
-    for k, v in context.items():
-        if hasattr(v, 'evaluate'):
-            v = v.evaluate(context)
-        print(f"  {k}: {v}")
+# if __name__ == "__main__":
+#     import sys 
+#     f = sys.argv[1]
+#     with open(f) as fp:
+#         text = fp.read()
+#     result = parser.parse(text)
+#     context = Context(providers=[BuiltinFunctionProvider()])
+#     for r in result:
+#         if isinstance(r, Definition):
+#             print(f"Definition: {r.name} = {r.type_def}")
+#             context[r.name] = r.type_def
+#         else:
+#             print(f"Unknown: {r}")
+#     print("Context:")
+#     for k, v in context.items():
+#         if hasattr(v, 'evaluate'):
+#             v = v.evaluate(context)
+#         print(f"  {k}: {v}")
 
 
 
@@ -291,8 +291,9 @@ GRAMMAR_OPS = """
         | value:null 
         | value:array
         | value:identifier
-        | "(" expr:expression ")"
+        | "(" expr:expression_list ")"
         ;
+    expression_list = head:expression "," tail:expression_list | head:expression ;
     expression = first:value rest:expression | first:value ;
     statement = expr:expression ";" ;
 """
@@ -316,6 +317,29 @@ class ListExpression:
             return ListExpression(self.items + other)
         else:
             raise ValueError("Can only add ListExpression or list to ListExpression")
+
+class ExpressionList:
+    def __init__(self, items):
+        self.items = items
+    def __repr__(self):
+        return f"ExpressionList({self.items})"
+    def evaluate(self, context: dict):
+        return [evaluate(context, item) for item in self.items]
+    
+    def __len__(self):
+        return len(self.items)
+    
+    def __getitem__(self, index):
+        return self.items[index]
+    
+    def __add__(self, other):
+        if isinstance(other, ExpressionList):
+            return ExpressionList(self.items + other.items)
+        elif isinstance(other, list):
+            return ExpressionList(self.items + other)
+        else:
+            raise ValueError("Can only add ExpressionList or list to ExpressionList")
+
 
 class CustomOpSemantics:
     def string(self, s):
@@ -353,6 +377,12 @@ class CustomOpSemantics:
         left = parts.first
         right = parts.rest or [] 
         return [left] + right
+
+    def expression_list(self, parts):
+        if parts.tail is None:
+            return ExpressionList([parts.head])
+        else:
+            return ExpressionList([parts.head]) + parts.tail
 
     def statements(self, stmts):
         if stmts.tail is None:
@@ -399,7 +429,7 @@ def evaluate(context, expr):
             if op_index == -1 and len(expr) == 1:
                 return evaluate(context, expr[0])
             if op_index == -1:
-                raise ValueError("No operator found in expression:" + str(expr))
+                return [evaluate(context, e) for e in expr]
             left = expr[:op_index]
             right = expr[op_index+1:]
             if not min_op:
@@ -409,7 +439,20 @@ def evaluate(context, expr):
             else:
                 left_evaluated = evaluate(context, left)
                 right_evaluated = evaluate(context, right)
-                return min_op(left_evaluated, right_evaluated)
+                if left_evaluated is not None and right_evaluated is not None:
+                    if isinstance(left_evaluated, list) and not isinstance(right_evaluated, list):
+                        return [min_op(item, right_evaluated) for item in left_evaluated]
+                    elif isinstance(right_evaluated, list) and not isinstance(left_evaluated, list):
+                        return [min_op(left_evaluated, item) for item in right_evaluated]
+                    else:
+                        return min_op(left_evaluated, right_evaluated)
+                else:
+                    if isinstance(left_evaluated, list):
+                        return min_op(*left_evaluated)
+                    elif isinstance(right_evaluated, list):
+                        return min_op(*right_evaluated)
+                    else:
+                        return min_op(left_evaluated, right_evaluated)
 
     else:
         if hasattr(expr, 'evaluate'):
@@ -420,52 +463,53 @@ def evaluate(context, expr):
 EXAMPLE = """
 a = [1, 2, 3];
 b = a + [4, 5];
+c = sum(3 + 4, 5);
 """
-# if __name__ == "__main__":
-#     import sys 
-#     f = sys.argv[1] if len(sys.argv) > 1 else None
-#     if f:
-#         with open(f) as fp:
-#             text = fp.read()
-#     else:
-#         text = EXAMPLE
-#     result = parser_ops.parse(text)
-#     context = Context(providers=[BuiltinFunctionProvider()])
-#     # define operators in context
-#     context["+"] = (lambda a, b: a + b if a else b, 10)
-#     context["-"] = (lambda a, b: a - b if a else -b, 10)
-#     context["*"] = (lambda a, b: a * b if a else 0, 20)
-#     context["/"] = (lambda a, b: a / b if a else 1, 20)
+if __name__ == "__main__":
+    import sys 
+    f = sys.argv[1] if len(sys.argv) > 1 else None
+    if f:
+        with open(f) as fp:
+            text = fp.read()
+    else:
+        text = EXAMPLE
+    result = parser_ops.parse(text)
+    context = Context(providers=[BuiltinFunctionProvider()])
+    # define operators in context
+    context["+"] = (lambda a, b: a + b if a else b, 10)
+    context["-"] = (lambda a, b: a - b if a else -b, 10)
+    context["*"] = (lambda a, b: a * b if a else 0, 20)
+    context["/"] = (lambda a, b: a / b if a else 1, 20)
+    context["sum"] = (lambda *lst: sum(lst) if lst else 0, 30)
+    class Assignment:
+        def evaluate(self, context, left, right):
+            if len(left) != 1:
+                raise ValueError("Left side of assignment must be a single identifier")
+            if not isinstance(left[0], Identifier):
+                raise ValueError("Left side of assignment must be an identifier")
+            right_value = evaluate(context, right)
+            context[left[0].name] = right_value
+            return right_value
 
-#     class Assignment:
-#         def evaluate(self, context, left, right):
-#             if len(left) != 1:
-#                 raise ValueError("Left side of assignment must be a single identifier")
-#             if not isinstance(left[0], Identifier):
-#                 raise ValueError("Left side of assignment must be an identifier")
-#             right_value = evaluate(context, right)
-#             context[left[0].name] = right_value
-#             return right_value
-
-#     context["="] = (Assignment(), 0)
-#     print("Parsed result:")
-#     for r in result:
-#         print(f"  {r}")
-#     print("Evaluating...")
-#     for r in result:
-#         print(f"Evaluating: {r}")
-#         if hasattr(r, 'evaluate'):
-#             value = evaluate(context, r)
-#             print(f"Expression result: {value}")
-#         elif isinstance(r, list) or isinstance(r, tuple):
-#             value = evaluate(context, r)
-#             print(f"Expression result: {value}")
-#         else:
-#             print(f"Unknown: {r}")
-#     print("Context:")
-#     for k, v in context.items():
-#         if hasattr(v, 'evaluate'):
-#             v = v.evaluate(context)
-#         if isinstance(v, list):
-#             v = evaluate(context, v)
-#         print(f"  {k}: {v}")
+    context["="] = (Assignment(), 0)
+    print("Parsed result:")
+    for r in result:
+        print(f"  {r}")
+    print("Evaluating...")
+    for r in result:
+        print(f"Evaluating: {r}")
+        if hasattr(r, 'evaluate'):
+            value = evaluate(context, r)
+            print(f"Expression result: {value}")
+        elif isinstance(r, list) or isinstance(r, tuple):
+            value = evaluate(context, r)
+            print(f"Expression result: {value}")
+        else:
+            print(f"Unknown: {r}")
+    print("Context:")
+    for k, v in context.items():
+        if hasattr(v, 'evaluate'):
+            v = v.evaluate(context)
+        if isinstance(v, list):
+            v = evaluate(context, v)
+        print(f"  {k}: {v}")

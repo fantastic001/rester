@@ -649,14 +649,6 @@ class Access(Operator):
             return result[identifier]
 
 if __name__ == "__main__":
-    import sys 
-    f = sys.argv[1] if len(sys.argv) > 1 else None
-    if f:
-        with open(f) as fp:
-            text = fp.read()
-    else:
-        text = EXAMPLE
-    result = parser_ops.parse(text)
     context = Context(providers=[BuiltinFunctionProvider()])
     # define operators in context
     context["+"] = (lambda a, b: a + b if a else b, 10)
@@ -688,17 +680,17 @@ if __name__ == "__main__":
     context["random"] = (lambda: random.random(), 100)
     context["->"] = (FunDef(), 5)
     print("Parsed result:")
-    for r in result:
-        if hasattr(r, 'evaluate'):
-            value = evaluate(context, r)
-        elif isinstance(r, list) or isinstance(r, tuple):
-            value = evaluate(context, r)
-        else:
-            print(f"Unknown: {r}")
-    print("Context:")
-    for k, v in context.items():
-        if hasattr(v, 'evaluate'):
-            v = v.evaluate(context)
-        if isinstance(v, list):
-            v = evaluate(context, v)
-        print(f"  {k}: {v}")
+    result = ""
+    
+    while True:
+        result = input("> ") + ";"
+        result = parser_ops.parse(result, semantics=CustomOpSemantics())
+        value = None
+        for r in result:
+            if hasattr(r, 'evaluate'):
+                value = evaluate(context, r)
+            elif isinstance(r, list) or isinstance(r, tuple):
+                value = evaluate(context, r)
+            else:
+                print(f"Unknown: {r}")
+        print(value)
